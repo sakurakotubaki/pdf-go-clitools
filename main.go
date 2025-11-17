@@ -81,10 +81,12 @@ func generatePDF(content string, outputPath string) error {
 	// gopdfライブラリを使用してPDFオブジェクトを作成
 	// gopdfは日本語フォントにより良い対応をしています
 	pdf := gopdf.GoPdf{}
-	
+
 	// A4サイズのページを設定（210mm x 297mm）
-	// 単位: mm（ミリメートル）
-	pdf.Start(gopdf.Config{PageSize: gopdf.Rect{W: 210, H: 297}}) // A4サイズ
+	// gopdfの単位はポイント（pt）のため、mmからptへ変換
+	pageWidth := mmToPt(210.0)
+	pageHeight := mmToPt(297.0)
+	pdf.Start(gopdf.Config{PageSize: gopdf.Rect{W: pageWidth, H: pageHeight}})
 
 	// 日本語フォントの設定
 	// gopdfで日本語を表示するには、TTF形式のフォントファイルが必要です
@@ -134,13 +136,12 @@ func generatePDF(content string, outputPath string) error {
 	lines := strings.Split(content, "\n")
 
 	// ページのマージンを設定（上下左右20mm）
-	margin := 20.0
-	const pageHeight = 297.0 // A4の高さ
-	
-	// フォントサイズに基づいて行の高さを計算
-	// フォントサイズ12ptの場合、行の高さは約4.23mm（12pt = 12/72インチ = 約4.23mm）
-	// 行間を考慮して、6mmに設定
-	const lineHeight = 6.0    // 行間（mm）
+	margin := mmToPt(20.0)
+	bottomMargin := mmToPt(20.0)
+
+	// フォントサイズに基づいて行の高さを計算（6mm）
+	lineHeight := mmToPt(6.0)
+	blankLineGap := mmToPt(5.0)
 
 	// 現在のY座標（縦位置）を設定
 	y := margin
@@ -149,38 +150,32 @@ func generatePDF(content string, outputPath string) error {
 	for _, line := range lines {
 		// 空行の場合は少しスペースを追加
 		if strings.TrimSpace(line) == "" {
-			y += 5
-			pdf.SetY(y)
+			y += blankLineGap
 			continue
 		}
 
 		// ページの下端に近づいた場合は新しいページを追加
 		// マージンと余白（20mm）を考慮して改ページを判定
-		if y > pageHeight-margin-20 {
+		if y > pageHeight-bottomMargin-lineHeight {
 			pdf.AddPage()
 			y = margin
 		}
 
 		// テキストを出力
-		// SetX, SetYで位置を設定し、Cellでテキストを出力
-		pdf.SetX(margin)
-		pdf.SetY(y)
-		
-		// Cellメソッドでテキストを出力
-		// 幅: 170mm（A4の幅210mm - マージン20mm x 2）
-		// 高さ: lineHeight（行の高さを指定して、CellメソッドにY座標の自動更新を任せる）
-		// テキスト: 行の内容
-		// 注意: Cellメソッドは高さを指定すると、その高さ分だけY座標を自動的に更新します
-		rect := &gopdf.Rect{W: 170, H: lineHeight}
-		err := pdf.Cell(rect, line)
+		// SetX, SetYで位置を設定し、Textメソッドで直接テキストを出力
+		// Textメソッドは位置を自動更新しないため、位置管理が簡単で正確
+		pdf.SetXY(margin, y)
+
+		// Textメソッドでテキストを出力
+		// 引数: テキスト内容
+		// SetX, SetYで設定した位置にテキストを出力
+		err := pdf.Text(line)
 		if err != nil {
 			return fmt.Errorf("テキストの出力に失敗しました: %w", err)
 		}
 
-		// CellメソッドがY座標を自動的に更新するため、現在のY座標を取得
-		// 次の行の位置は、Cellメソッドが自動的に設定します
-		currentY := pdf.GetY()
-		y = currentY
+		// 次の行の位置を計算（行間: 6mm）
+		y += lineHeight
 	}
 
 	// PDFファイルを出力
@@ -251,4 +246,9 @@ func findJapaneseFont() string {
 
 	// フォントファイルが見つからない場合は空文字列を返す
 	return ""
+}
+
+// mmToPt: ミリメートルをポイント（pt）に変換するヘルパー関数
+func mmToPt(mm float64) float64 {
+	return mm * 72.0 / 25.4
 }
